@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  auto-test:
+    build: .
+    container_name: auto-test-framework
+    volumes:
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - ./data:/app/data
+    environment:
+      - TEST_ENV=dev
+      - DING_WEBHOOK=${DING_WEBHOOK}
+      - DING_SECRET=${DING_SECRET}
+      - WORKERS=4
+    command: python run.py -e dev --dingtalk
+
+  # 可选：Allure报告服务
+  allure:
+    image: frankescobar/allure-docker-service
+    container_name: allure-service
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./reports:/app/allure-results
+    environment:
+      - CHECK_RESULTS_EVERY_SECONDS=60
+      - KEEP_HISTORY=1

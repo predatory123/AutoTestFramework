@@ -1,0 +1,81 @@
+pipeline {
+    agent any
+
+    environment {
+        PYTHON_VERSION = '3.9'
+        TEST_ENV = 'test'
+        DING_WEBHOOK = credentials('dingtalk-webhook')
+        DING_SECRET = credentials('dingtalk-secret')
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Setup Environment') {
+            steps {
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh '''
+                    . venv/bin/activate
+                    python run.py -e ${TEST_ENV} -n 4 --dingtalk
+                '''
+            }
+        }
+
+        stage('Generate Allure Report') {
+            steps {
+                allure([
+                    includeProperties: false,
+                    jdk: '',
+                    properties: [],
+                    reportBuildPolicy: 'ALWAYS',
+                    results: [[path: 'reports/**/allure-results']]
+                ])
+            }
+        }
+
+        stage('Archive Reports') {
+            steps {
+                archiveArtifacts artifacts: 'reports/**', fingerprint: true
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: '**/report.html',
+                    reportName: 'HTML Test Report'
+                ])
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            script {
+                echo "Tests failed! Check DingTalk notification."
+            }
+        }
+    }
+}

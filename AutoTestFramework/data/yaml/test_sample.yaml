@@ -1,0 +1,39 @@
+testcases:
+  - id: TC001
+    name: "正常登录"
+    priority: high
+    request:
+      method: POST
+      url: https://httpbin.org/post
+      headers:
+        Content-Type: application/json
+      body:
+        username: "admin"
+        password: "Admin@123"
+    validate:
+      - eq: [status_code, 200]
+      - contains: [body, "admin"]
+
+  - id: TC002
+    name: "错误密码登录"
+    priority: high
+    request:
+      method: POST
+      url: https://httpbin.org/post
+      body:
+        username: "admin"
+        password: "wrong"
+    validate:
+      - eq: [status_code, 200]
+
+  - id: TC003
+    name: "获取用户信息"
+    priority: medium
+    request:
+      method: GET
+      url: https://httpbin.org/get
+      params:
+        userId: "12345"
+    validate:
+      - eq: [status_code, 200]
+      - jsonpath: ["args.userId", "12345"]

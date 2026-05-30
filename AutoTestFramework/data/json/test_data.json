@@ -1,0 +1,21 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "role": "administrator"
+    },
+    {
+      "id": 2,
+      "username": "tester",
+      "email": "tester@example.com",
+      "role": "tester"
+    }
+  ],
+  "endpoints": {
+    "login": "/api/auth/login",
+    "logout": "/api/auth/logout",
+    "users": "/api/users"
+  }
+}
