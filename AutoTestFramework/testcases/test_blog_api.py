@@ -126,9 +126,9 @@ class TestBlogArticle:
 
     def test_list_articles(self, request_engine, blog_api_server):
         """文章列表 - 分页"""
-        resp = request_engine.post(
-            f"{blog_api_server.base_url}/articles/list",
-            data={"page": 1, "pageSize": 5}
+        resp = request_engine.get(
+            f"{blog_api_server.base_url}/articles",
+            params={"page": 1, "pageSize": 5}
         )
         assert resp.status_code == 200
         assert resp.body["success"] is True
@@ -137,16 +137,16 @@ class TestBlogArticle:
 
     def test_list_articles_pagination(self, request_engine, blog_api_server):
         """文章列表 - 分页参数"""
-        resp = request_engine.post(
-            f"{blog_api_server.base_url}/articles/list",
-            data={"page": 1, "pageSize": 2}
+        resp = request_engine.get(
+            f"{blog_api_server.base_url}/articles",
+            params={"page": 1, "pageSize": 2}
         )
         assert resp.status_code == 200
         assert len(resp.body["data"]) <= 2
 
     def test_hot_articles(self, request_engine, blog_api_server):
         """热门文章"""
-        resp = request_engine.post(f"{blog_api_server.base_url}/articles/hot")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/hot")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         articles = resp.body["data"]
@@ -154,14 +154,14 @@ class TestBlogArticle:
 
     def test_new_articles(self, request_engine, blog_api_server):
         """最新文章"""
-        resp = request_engine.post(f"{blog_api_server.base_url}/articles/new")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/new")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         assert len(resp.body["data"]) >= 1
 
     def test_list_archives(self, request_engine, blog_api_server):
         """文章归档"""
-        resp = request_engine.post(f"{blog_api_server.base_url}/articles/listArchives")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/archives")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         archives = resp.body["data"]
@@ -173,13 +173,13 @@ class TestBlogArticle:
 
     def test_view_article(self, request_engine, blog_api_server):
         """查看文章详情"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/articles/view/1")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/1")
         # 注意：接口可能返回系统异常（-999），需要业务正常时才能通过
         assert resp.status_code in [200, 500]  # 允许系统异常
 
     def test_view_article_not_found(self, request_engine, blog_api_server):
         """查看文章 - 不存在"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/articles/view/9999")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/99999")
         assert resp.status_code == 404 or resp.body["success"] is False
 
     def test_publish_article(self, request_engine, blog_api_server, blog_auth):
@@ -218,7 +218,7 @@ class TestBlogComment:
 
     def test_get_comments(self, request_engine, blog_api_server):
         """获取文章评论"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/comments/article/1")
+        resp = request_engine.get(f"{blog_api_server.base_url}/comments", params={"articleId": 1})
         assert resp.status_code == 200
         assert resp.body["success"] is True
         assert isinstance(resp.body["data"], list)
@@ -226,7 +226,7 @@ class TestBlogComment:
     def test_create_comment(self, request_engine, blog_api_server, blog_auth):
         """发布评论"""
         resp = request_engine.post(
-            f"{blog_api_server.base_url}/comments/create/change",
+            f"{blog_api_server.base_url}/comments",
             headers=blog_auth,
             data={"articleId": 1, "content": f"自动化测试评论_{int(time.time())}"}
         )
@@ -236,7 +236,7 @@ class TestBlogComment:
     def test_create_comment_empty_content(self, request_engine, blog_api_server, blog_auth):
         """发布评论 - 空内容"""
         resp = request_engine.post(
-            f"{blog_api_server.base_url}/comments/create/change",
+            f"{blog_api_server.base_url}/comments",
             headers=blog_auth,
             data={"articleId": 1, "content": ""}
         )
@@ -245,7 +245,7 @@ class TestBlogComment:
     def test_create_comment_invalid_article(self, request_engine, blog_api_server, blog_auth):
         """发布评论 - 无效文章ID"""
         resp = request_engine.post(
-            f"{blog_api_server.base_url}/comments/create/change",
+            f"{blog_api_server.base_url}/comments",
             headers=blog_auth,
             data={"articleId": 99999, "content": "评论内容"}
         )
@@ -261,7 +261,7 @@ class TestBlogCategory:
 
     def test_list_categories(self, request_engine, blog_api_server):
         """获取全部分类"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categories")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         cats = resp.body["data"]
@@ -269,7 +269,7 @@ class TestBlogCategory:
 
     def test_category_detail(self, request_engine, blog_api_server):
         """获取分类详情 + 该分类文章"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/10001")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categories/detail/10001")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         # 实际返回直接是category对象，不是嵌套结构
@@ -277,12 +277,12 @@ class TestBlogCategory:
 
     def test_category_detail_not_found(self, request_engine, blog_api_server):
         """分类详情 - 不存在"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/99999")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categories/detail/99999")
         assert resp.status_code == 404 or resp.body["success"] is False
 
     def test_categories_detail(self, request_engine, blog_api_server):
         """获取全部分类详情"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categories/detail")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         assert len(resp.body["data"]) >= 1
@@ -356,7 +356,7 @@ class TestBlogIntegration:
     @pytest.mark.parametrize("article_id", [1, 2, 3])
     def test_view_multiple_articles(self, request_engine, blog_api_server, article_id):
         """批量查看文章"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/articles/view/{article_id}")
+        resp = request_engine.get(f"{blog_api_server.base_url}/articles/{article_id}")
         # 可能返回系统异常
         assert resp.status_code in [200, 500]
 
