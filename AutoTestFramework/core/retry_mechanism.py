@@ -1,16 +1,23 @@
-"""重试机制与故障恢复策略"""
+"""重试机制与故障恢复策略 - 统一的实现"""
 import time
 import random
 from functools import wraps
-from typing import Callable, Tuple, Type, Optional
+from typing import Callable, Tuple, Type
 import logging
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "ExponentialBackoffRetry",
+    "CircuitBreaker",
+    "CircuitBreakerOpenError",
+]
+
+
 class ExponentialBackoffRetry:
     """指数退避重试策略"""
 
-    def __init__(self, 
+    def __init__(self,
                  max_attempts: int = 3,
                  base_delay: float = 1.0,
                  max_delay: float = 60.0,
@@ -39,76 +46,58 @@ class ExponentialBackoffRetry:
                         self.base_delay * (self.exponential_base ** (attempt - 1)),
                         self.max_delay
                     )
-
                     if self.jitter:
                         delay = delay * (0.5 + random.random())
 
                     logger.warning(f"Attempt {attempt} failed: {e}. Retrying in {delay:.2f}s...")
                     time.sleep(delay)
-
             return None
         return wrapper
 
-class CircuitBreakerWithRetry:
-    """带重试的熔断器"""
 
-    def __init__(self, 
-                 failure_threshold: int = 5,
-                 recovery_timeout: int = 60,
-                 half_open_max_calls: int = 3):
+class CircuitBreaker:
+    """熔断器模式 - 防止级联故障"""
+
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        self.half_open_max_calls = half_open_max_calls
-
         self.failure_count = 0
-        self.success_count = 0
-        self.last_failure_time = None
+        self.last_failure_time: float = 0
         self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-        self.half_open_calls = 0
 
-    def call(self, func: Callable, *args, **kwargs):
-        """执行带熔断保护的函数"""
+    def can_execute(self) -> bool:
+        """检查当前是否可以执行请求"""
+        if self.state == "CLOSED":
+            return True
         if self.state == "OPEN":
             if time.time() - self.last_failure_time > self.recovery_timeout:
                 self.state = "HALF_OPEN"
-                self.half_open_calls = 0
                 logger.info("Circuit breaker entering HALF_OPEN state")
-            else:
-                raise CircuitBreakerOpenError("Circuit breaker is OPEN")
+                return True
+            return False
+        # HALF_OPEN 状态允许放行一个请求
+        return True
 
-        if self.state == "HALF_OPEN" and self.half_open_calls >= self.half_open_max_calls:
-            raise CircuitBreakerOpenError("Circuit breaker HALF_OPEN limit reached")
-
-        if self.state == "HALF_OPEN":
-            self.half_open_calls += 1
-
-        try:
-            result = func(*args, **kwargs)
-            self._record_success()
-            return result
-        except Exception as e:
-            self._record_failure()
-            raise
-
-    def _record_success(self):
+    def record_success(self):
+        """记录成功，恢复正常状态"""
         self.failure_count = 0
         if self.state == "HALF_OPEN":
-            self.success_count += 1
-            if self.success_count >= self.half_open_max_calls:
-                self.state = "CLOSED"
-                self.success_count = 0
-                logger.info("Circuit breaker CLOSED (recovered)")
+            self.state = "CLOSED"
+            logger.info("Circuit breaker CLOSED (recovered)")
+        elif self.state == "CLOSED":
+            self.failure_count = 0
 
-    def _record_failure(self):
+    def record_failure(self):
+        """记录失败，必要时打开熔断"""
         self.failure_count += 1
         self.last_failure_time = time.time()
-
         if self.state == "HALF_OPEN":
             self.state = "OPEN"
             logger.error("Circuit breaker OPENED (half-open test failed)")
         elif self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
-            logger.error(f"Circuit breaker OPENED after {self.failure_threshold} failures")
+            logger.error(f"Circuit breaker OPENED after {self.failure_count} failures")
+
 
 class CircuitBreakerOpenError(Exception):
     """熔断器打开异常"""

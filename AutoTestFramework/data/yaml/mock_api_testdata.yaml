@@ -1,0 +1,168 @@
+# Mock API 测试数据集
+# 测试环境: http://localhost:19999
+
+testcases:
+  # ─── 认证模块 ───────────────────────────────────────────────────
+  - id: "AUTH-001"
+    name: "正常登录-admin用户"
+    priority: critical
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/login"
+      body:
+        username: "admin"
+        password: "Admin@123"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - contains: ["body.data.token", "mock_token"]
+
+  - id: "AUTH-002"
+    name: "正常登录-tester用户"
+    priority: critical
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/login"
+      body:
+        username: "tester"
+        password: "Test@123"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - jsonpath: ["body.data.token", "mock_token"]
+
+  - id: "AUTH-003"
+    name: "登录失败-密码错误"
+    priority: high
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/login"
+      body:
+        username: "admin"
+        password: "wrong_password"
+    validate:
+      - eq: ["status_code", 401]
+      - eq: ["body.code", 401]
+
+  - id: "AUTH-004"
+    name: "登录失败-用户不存在"
+    priority: high
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/login"
+      body:
+        username: "nonexistent"
+        password: "anypass"
+    validate:
+      - eq: ["status_code", 401]
+
+  - id: "AUTH-005"
+    name: "登录失败-缺少凭证"
+    priority: medium
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/login"
+      body:
+        username: ""
+        password: ""
+    validate:
+      - eq: ["status_code", 400]
+      - eq: ["body.code", 400]
+
+  # ─── 用户管理模块 ────────────────────────────────────────────────
+  - id: "USER-001"
+    name: "获取用户列表"
+    priority: high
+    request:
+      method: "GET"
+      url: "http://localhost:19999/api/users"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - jsonpath: ["body.data.total", 2]
+
+  - id: "USER-002"
+    name: "获取指定用户详情"
+    priority: high
+    request:
+      method: "GET"
+      url: "http://localhost:19999/api/users/1"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - eq: ["body.data.username", "admin"]
+
+  - id: "USER-003"
+    name: "获取不存在的用户"
+    priority: medium
+    request:
+      method: "GET"
+      url: "http://localhost:19999/api/users/9999"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+    validate:
+      - eq: ["status_code", 404]
+      - eq: ["body.code", 404]
+
+  - id: "USER-004"
+    name: "创建新用户"
+    priority: critical
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/users"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+      body:
+        username: "newuser"
+        email: "newuser@example.com"
+        role: "tester"
+    validate:
+      - eq: ["status_code", 201]
+      - eq: ["body.code", 0]
+      - eq: ["body.data.username", "newuser"]
+
+  - id: "USER-005"
+    name: "更新用户信息"
+    priority: high
+    request:
+      method: "PUT"
+      url: "http://localhost:19999/api/users/1"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+      body:
+        email: "newemail@example.com"
+        role: "superadmin"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - eq: ["body.data.email", "newemail@example.com"]
+
+  - id: "USER-006"
+    name: "删除用户"
+    priority: high
+    request:
+      method: "DELETE"
+      url: "http://localhost:19999/api/users/2"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+
+  # ─── 性能测试 ──────────────────────────────────────────────────
+  - id: "PERF-001"
+    name: "Token刷新"
+    priority: medium
+    request:
+      method: "POST"
+      url: "http://localhost:19999/api/auth/refresh"
+      headers:
+        Authorization: "Bearer mock_token_1234567890"
+    validate:
+      - eq: ["status_code", 200]
+      - eq: ["body.code", 0]
+      - response_time: 5000
