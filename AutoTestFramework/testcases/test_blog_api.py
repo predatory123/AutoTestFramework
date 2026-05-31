@@ -269,7 +269,7 @@ class TestBlogCategory:
 
     def test_category_detail(self, request_engine, blog_api_server):
         """获取分类详情 + 该分类文章"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/1")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/10001")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         # 实际返回直接是category对象，不是嵌套结构
@@ -277,7 +277,7 @@ class TestBlogCategory:
 
     def test_category_detail_not_found(self, request_engine, blog_api_server):
         """分类详情 - 不存在"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/9999")
+        resp = request_engine.get(f"{blog_api_server.base_url}/categorys/detail/99999")
         assert resp.status_code == 404 or resp.body["success"] is False
 
     def test_categories_detail(self, request_engine, blog_api_server):
@@ -311,7 +311,7 @@ class TestBlogTag:
 
     def test_tag_detail(self, request_engine, blog_api_server):
         """标签详情"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/tags/detail/1")
+        resp = request_engine.get(f"{blog_api_server.base_url}/tags/detail/20001")
         assert resp.status_code == 200
         assert resp.body["success"] is True
         # 实际返回直接是tag对象，不是嵌套结构
@@ -319,7 +319,7 @@ class TestBlogTag:
 
     def test_tag_detail_not_found(self, request_engine, blog_api_server):
         """标签详情 - 不存在"""
-        resp = request_engine.get(f"{blog_api_server.base_url}/tags/detail/9999")
+        resp = request_engine.get(f"{blog_api_server.base_url}/tags/detail/99999")
         assert resp.status_code == 404 or resp.body["success"] is False
 
     def test_tags_detail(self, request_engine, blog_api_server):
