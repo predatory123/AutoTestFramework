@@ -1,14 +1,17 @@
+"""高可用HTTP请求引擎 - 统一的重试/熔断机制"""
 import asyncio
 import aiohttp
 import requests
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import time
-from functools import wraps
 import logging
 
+from .retry_mechanism import CircuitBreaker, ExponentialBackoffRetry, CircuitBreakerOpenError
+
 logger = logging.getLogger(__name__)
+
 
 class Method(Enum):
     GET = "GET"
@@ -16,6 +19,7 @@ class Method(Enum):
     PUT = "PUT"
     DELETE = "DELETE"
     PATCH = "PATCH"
+
 
 @dataclass
 class Response:
@@ -33,57 +37,6 @@ class Response:
     def json(self) -> Any:
         return self.body if isinstance(self.body, dict) else {}
 
-class CircuitBreaker:
-    """熔断器模式 - 防止级联故障"""
-    def __init__(self, failure_threshold=5, recovery_timeout=60):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self.failure_count = 0
-        self.last_failure_time = None
-        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
-
-    def can_execute(self) -> bool:
-        if self.state == "CLOSED":
-            return True
-        if self.state == "OPEN":
-            if time.time() - self.last_failure_time > self.recovery_timeout:
-                self.state = "HALF_OPEN"
-                return True
-            return False
-        return True
-
-    def record_success(self):
-        self.failure_count = 0
-        self.state = "CLOSED"
-
-    def record_failure(self):
-        self.failure_count += 1
-        self.last_failure_time = time.time()
-        if self.failure_count >= self.failure_threshold:
-            self.state = "OPEN"
-            logger.error(f"Circuit breaker OPENED for service")
-
-def retry(max_attempts=3, delay=1, backoff=2, exceptions=(Exception,)):
-    """指数退避重试装饰器"""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            attempt = 1
-            current_delay = delay
-
-            while attempt <= max_attempts:
-                try:
-                    return func(*args, **kwargs)
-                except exceptions as e:
-                    logger.warning(f"Attempt {attempt} failed: {str(e)}")
-                    if attempt == max_attempts:
-                        raise
-                    time.sleep(current_delay)
-                    current_delay *= backoff
-                    attempt += 1
-            return None
-        return wrapper
-    return decorator
 
 class RequestEngine:
     """高可用HTTP请求引擎 - 支持同步/异步、连接池、熔断、重试"""
@@ -114,21 +67,18 @@ class RequestEngine:
             self.circuit_breakers[host] = CircuitBreaker()
         return self.circuit_breakers[host]
 
-    @retry(max_attempts=3, delay=1, backoff=2, 
-           exceptions=(requests.RequestException, TimeoutError))
-    def request(self, method: Method, url: str, 
+    def request(self, method: Method, url: str,
                 headers: Optional[Dict] = None,
                 data: Optional[Any] = None,
                 params: Optional[Dict] = None,
                 timeout: int = 30,
                 **kwargs) -> Response:
-        """同步请求方法"""
-
+        """同步请求方法 - 内置熔断保护"""
         host = url.split('/')[2]
         breaker = self._get_circuit_breaker(host)
 
         if not breaker.can_execute():
-            raise Exception(f"Circuit breaker is OPEN for {host}")
+            raise CircuitBreakerOpenError(f"Circuit breaker is OPEN for {host}")
 
         start_time = time.time()
         merged_headers = {**self.session.headers, **(headers or {})}
@@ -161,7 +111,7 @@ class RequestEngine:
                 raw_response=resp
             )
 
-            # 记录成功
+            # 记录成功/失败
             if response.is_success:
                 breaker.record_success()
             else:
@@ -170,7 +120,7 @@ class RequestEngine:
             logger.info(f"[{method.value}] {url} - {resp.status_code} ({response_time}ms)")
             return response
 
-        except Exception as e:
+        except requests.RequestException as e:
             breaker.record_failure()
             logger.error(f"Request failed: [{method.value}] {url} - {str(e)}")
             raise
@@ -181,13 +131,30 @@ class RequestEngine:
     def put(self, url, **kwargs): return self.request(Method.PUT, url, **kwargs)
     def delete(self, url, **kwargs): return self.request(Method.DELETE, url, **kwargs)
 
-    async def async_request(self, method: Method, url: str, **kwargs) -> Response:
+    async def async_request(self, method: Method, url: str,
+                           headers: Optional[Dict] = None,
+                           data: Optional[Any] = None,
+                           params: Optional[Dict] = None,
+                           timeout: int = 30,
+                           **kwargs) -> Response:
         """异步请求方法 - 用于并发测试场景"""
         async with aiohttp.ClientSession() as session:
             start_time = time.time()
-            async with session.request(method.value, url, **kwargs) as resp:
+            merged_headers = {**self.session.headers, **(headers or {})}
+            async with session.request(
+                    method.value, url,
+                    headers=merged_headers,
+                    json=data if isinstance(data, dict) else None,
+                    data=data if not isinstance(data, dict) else None,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=timeout),
+                    **kwargs
+            ) as resp:
                 response_time = round((time.time() - start_time) * 1000, 2)
-                body = await resp.json()
+                try:
+                    body = await resp.json()
+                except ValueError:
+                    body = await resp.text()
                 return Response(
                     status_code=resp.status,
                     headers=dict(resp.headers),
@@ -195,6 +162,7 @@ class RequestEngine:
                     response_time=response_time,
                     raw_response=resp
                 )
+
 
 class AsyncBatchProcessor:
     """批量异步处理器 - 用于压力测试"""
@@ -208,7 +176,8 @@ class AsyncBatchProcessor:
 
         async def bounded_request(req):
             async with semaphore:
-                return await self.engine.async_request(**req)
+                method = Method(req.pop('method', 'GET'))
+                return await self.engine.async_request(method=method, **req)
 
         tasks = [bounded_request(req) for req in requests]
         return await asyncio.gather(*tasks, return_exceptions=True)
