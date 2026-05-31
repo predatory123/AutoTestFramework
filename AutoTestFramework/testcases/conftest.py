@@ -122,6 +122,24 @@ def mock_api_server():
     server.stop()
 
 
+@pytest.fixture(scope="session")
+def blog_api_server():
+    """Blog API 本地服务器配置"""
+    class ServerConfig:
+        base_url = "http://localhost:8080"
+    return ServerConfig()
+
+
+@pytest.fixture(scope="session")
+def blog_mock_server():
+    """Blog API Mock 服务器 (aiohttp 异步高性能版)"""
+    from testcases.blog_api_mock import BlogAPIServer
+    server = BlogAPIServer(host="localhost", port=19998)
+    server.start()
+    yield server
+    server.stop()
+
+
 # ---------------------------------------------------------------------------
 # pytest 钩子
 # ---------------------------------------------------------------------------

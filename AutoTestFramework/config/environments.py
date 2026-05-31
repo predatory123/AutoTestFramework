@@ -28,6 +28,13 @@ ENVIRONMENTS = {
         "db_port": 3306,
         "redis_host": "prod-redis.example.com",
         "timeout": 60
+    },
+    "local": {
+        "base_url": "http://localhost:8080",
+        "db_host": "localhost",
+        "db_port": 3306,
+        "redis_host": "localhost",
+        "timeout": 30
     }
 }
 
